@@ -1,3 +1,10 @@
+""" 
+第二版修改预计修改以下内容
+1 声明语句
+2 赋值语句
+3 bool运算符
+暂定分支为第二版
+"""
 class Yufa:
     def __init__(self):
         self.keywords = {'if', 'else', 'while'}

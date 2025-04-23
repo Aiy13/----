@@ -166,7 +166,6 @@ class TextEditor(QMainWindow):
         
         yufaFenxi = QAction('语法分析', self)
         yufaFenxi.triggered.connect(self.yufa_fenxi)
-        
         # 工具栏
         toolbar = self.addToolBar('工具栏')
         toolbar.setMovable(False)

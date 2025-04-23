@@ -1,3 +1,10 @@
+""" 
+第二版修改预计修改以下内容
+1 声明语句
+2 赋值语句
+3 bool运算符
+暂定分支为第二版
+"""
 class Yufa:
     def __init__(self):
         self.keywords = {'if', 'else', 'while'}
@@ -7,11 +14,23 @@ class Yufa:
         self.current = 0
         self.errors = []
         try:
+            # 检查main函数结构
+            if not self.check_main():
+                return {
+                    'type': 'error',
+                    'errors': self.errors
+                }
+            # 进入main函数体
             statements = []
-            while self.current < len(self.tokens):
+            while self.current < len(self.tokens) and self.current_token()[2] != '}':
                 stmt = self.statement()
                 if stmt:
                     statements.append(stmt)
+            # 检查main右大括号
+            if not self.current_token() or self.current_token()[2] != '}':
+                self.errors.append("main函数缺少右大括号")
+            else:
+                self.current += 1
             return {
                 'type': 'program',
                 'body': statements,
@@ -23,7 +42,26 @@ class Yufa:
                 'type': 'error',
                 'errors': self.errors
             }
-
+    def check_main(self):
+        # main ( ) {
+        if not self.current_token() or self.current_token()[2] != 'main':
+            self.errors.append("缺少main函数")
+            return False
+        self.current += 1
+        if not self.current_token() or self.current_token()[2] != '(':
+            self.errors.append("main函数缺少左括号")
+            return False
+        self.current += 1
+        if not self.current_token() or self.current_token()[2] != ')':
+            self.errors.append("main函数缺少右括号")
+            return False
+        self.current += 1
+        if not self.current_token() or self.current_token()[2] != '{':
+            self.errors.append("main函数缺少左大括号")
+            return False
+        self.current += 1
+        return True
+    
     def statement(self):
         """语句分析"""
         token = self.current_token()
@@ -40,26 +78,46 @@ class Yufa:
             return self.expression_statement()
 
     def expression_statement(self):
-        """表达式语句分析（包括赋值语句）"""
         start_token = self.current_token()
-        if not start_token:
+        expr = self.expression()
+        if expr is None:
+            # 语法错误已在expression中记录
+            # 跳到下一个分号或右大括号
+            while self.current < len(self.tokens) and self.current_token()[2] not in [';', '}']:
+                self.current += 1
+            if self.current_token() and self.current_token()[2] == ';':
+                self.current += 1
             return None
-
-        # 跳过直到分号
-        while self.current < len(self.tokens):
-            token = self.current_token()
+        # 检查分号
+        if not self.current_token() or self.current_token()[2] != ';':
+            self.errors.append(f"第{start_token[3]}行：表达式缺少分号")
+            # 跳到下一个分号或右大括号
+            while self.current < len(self.tokens) and self.current_token()[2] not in [';', '}']:
+                self.current += 1
+            if self.current_token() and self.current_token()[2] == ';':
+                self.current += 1
+            return None
+        self.current += 1
+        return expr
+    def expression(self):
+        token = self.current_token()
+        if token and token[2] in ['+', '-']:
+            op = token[2]
             self.current += 1
-            
-            if token[2] == ';':
-                return {
-                    'type': 'expression_statement',
-                    'line': start_token[3]
-                }
-                
-        # 如果没有找到分号
-        self.errors.append(f"第{start_token[3]}行：缺少分号")
-        return None
-
+            right = self.term()
+            if right is None:
+                self.errors.append(f"第{token[3]}行：一元运算符{op}缺少操作数")
+                return None
+            node = {'type': 'unary_expression', 'operator': op, 'operand': right}
+            return self.rest(node)
+        else:
+            left = self.term()
+            if left is None:
+                if token:
+                    self.errors.append(f"第{token[3]}行：表达式缺少左操作数")
+                return None
+            return self.rest(left)
+        
     def if_statement(self):
         """if语句分析"""
         if_token = self.current_token()
@@ -181,27 +239,122 @@ class Yufa:
         }
 
     def condition(self):
-        """条件表达式分析"""
-        left = self.expression()
+        """条件表达式分析，现在支持布尔运算"""
+        return self.bool_or()
+
+    def bool_or(self):
+        """或运算：bool_or -> bool_and (|| bool_and)*"""
+        left = self.bool_and()
         if not left:
             return None
-
-        op = self.current_token()
-        if not op or op[2] not in ['>', '<', '>=', '<=', '==', '!=']:
+            
+        while self.current_token() and self.current_token()[2] == '||':
+            op_token = self.current_token()
+            self.current += 1
+            
+            right = self.bool_and()
+            if not right:
+                self.errors.append(f"第{op_token[3]}行：逻辑或运算符||缺少右操作数")
+                return None
+                
+            left = {
+                'type': 'binary_expression',
+                'operator': '||',
+                'left': left,
+                'right': right
+            }
+            
+        return left
+    
+    def bool_and(self):
+        """与运算：bool_and -> bool_equality (&& bool_equality)*"""
+        left = self.bool_equality()
+        if not left:
             return None
-        self.current += 1
-
-        right = self.expression()
-        if not right:
+            
+        while self.current_token() and self.current_token()[2] == '&&':
+            op_token = self.current_token()
+            self.current += 1
+            
+            right = self.bool_equality()
+            if not right:
+                self.errors.append(f"第{op_token[3]}行：逻辑与运算符&&缺少右操作数")
+                return None
+                
+            left = {
+                'type': 'binary_expression',
+                'operator': '&&',
+                'left': left,
+                'right': right
+            }
+            
+        return left
+    def bool_equality(self):
+        """等于运算：bool_equality -> bool_relation ((== | !=) bool_relation)*"""
+        left = self.bool_relation()
+        if not left:
             return None
-
-        return {
-            'type': 'condition',
-            'operator': op[2],
-            'left': left,
-            'right': right
-        }
-
+            
+        while self.current_token() and self.current_token()[2] in ['==', '!=']:
+            op_token = self.current_token()
+            op = op_token[2]
+            self.current += 1
+            
+            right = self.bool_relation()
+            if not right:
+                self.errors.append(f"第{op_token[3]}行：比较运算符{op}缺少右操作数")
+                return None
+                
+            left = {
+                'type': 'binary_expression',
+                'operator': op,
+                'left': left,
+                'right': right
+            }
+            
+        return left
+    def bool_relation(self):
+        """关系比较：bool_relation -> bool_not ((> | < | >= | <=) bool_not)*"""
+        left = self.bool_not()
+        if not left:
+            return None
+            
+        while self.current_token() and self.current_token()[2] in ['>', '<', '>=', '<=']:
+            op_token = self.current_token()
+            op = op_token[2]
+            self.current += 1
+            
+            right = self.bool_not()
+            if not right:
+                self.errors.append(f"第{op_token[3]}行：比较运算符{op}缺少右操作数")
+                return None
+                
+            left = {
+                'type': 'binary_expression',
+                'operator': op,
+                'left': left,
+                'right': right
+            }
+            
+        return left
+    
+    def bool_not(self):
+        """逻辑非运算：bool_not -> !bool_not | expression"""
+        token = self.current_token()
+        if token and token[2] == '!':
+            self.current += 1
+            operand = self.bool_not()
+            if not operand:
+                self.errors.append(f"第{token[3]}行：逻辑非运算符!缺少操作数")
+                return None
+                
+            return {
+                'type': 'unary_expression',
+                'operator': '!',
+                'operand': operand
+            }
+        else:
+            return self.expression()
     def expression(self):
         """expr -> term rest"""
         term_val = self.term()

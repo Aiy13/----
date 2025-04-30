@@ -23,7 +23,7 @@ class Yufa:
                 'type': 'error',
                 'errors': self.errors
             }
-
+    # 总控判定
     def statement(self):
         """语句分析"""
         token = self.current_token()
@@ -35,12 +35,11 @@ class Yufa:
             return self.if_statement()
         elif token[2] == 'while':
             return self.while_statement()
-        # 处理其他语句（表达式语句，必须以分号结尾）
         else:
             return self.expression_statement()
 
     def expression_statement(self):
-        """表达式语句分析（包括赋值语句）"""
+        """表达式语句分析"""
         start_token = self.current_token()
         if not start_token:
             return None

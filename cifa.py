@@ -209,11 +209,8 @@ if __name__ == "__main__":
     cifa = Cifa()
     test_code = """
     main(){
-        a*;            
-        +b;           
-        (2 + 3 * 4;      
-         = 1;
-        }
+        if (c == a {
+
 """
     tokens = cifa.cifafenxi(test_code)
     print("非法字符列表：")

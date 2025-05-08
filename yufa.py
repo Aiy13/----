@@ -89,10 +89,6 @@ class Yufa:
         if expr is None:
             self.skip_to_statement_boundary(consume_semicolon=False)
             return None
-        if expr['type'] == 'identifier':
-            self.errors.append(f"第{start_token[3]}行：无效的因子 {expr['name']}")
-            self.skip_to_statement_boundary(consume_semicolon=False)
-            return None
         token = self.current_token()
         if not token or token[2] != ';':
             self.errors.append(f"第{start_token[3]}行：表达式缺少分号")
@@ -214,7 +210,7 @@ class Yufa:
             'condition': condition,
             'body': body
         }
-
+    # 条件表达式
     def condition(self):
         return self.bool_or()
 
@@ -312,6 +308,7 @@ class Yufa:
         return self.expression()
 
     def expression(self):
+        """expr -> term rest"""
         token = self.current_token()
         if not token:
             return None
@@ -411,6 +408,8 @@ class Yufa:
         token = self.current_token()
         if not token:
             return None
+        if token[2] == ';':
+            return None
         self.current += 1
         if token[1] in ['整数', '浮点数']:
             return {
@@ -438,7 +437,6 @@ class Yufa:
             self.errors.append(f"第{token[3]}行：无效运算符 {token[2]}")
             self.skip_to_statement_boundary(consume_semicolon=False)
             return None
-        self.errors.append(f"第{token[3]}行：无效的因子 {token[2]}")
         self.skip_to_statement_boundary(consume_semicolon=False)
         return None
 
@@ -456,10 +454,10 @@ class Yufa:
             self.current += 1
         if consume_semicolon and self.current < len(self.tokens) and self.current_token() and self.current_token()[2] == ';':
             self.current += 1
-            
+
 
 if __name__ == '__main__':
-    tokens = [(700, '标识符', 'main', 1), (301, '分隔符', '(', 1), (302, '分隔符', ')', 1), (303, '分隔符', '{', 1), (700, '标识符', 'a', 2), (203, '运算符', '*', 2), (307, '分隔符', ';', 2), (600, '注释', '// 缺少右操作数', 2), (201, '运算符', '+', 3), (700, '标识符', 'b', 3), (307, '分隔符', ';', 3), (600, '注释', '// 一元运算符缺少操作数', 3), (301, '分隔符', '(', 4), (400, '整数', '2', 4), (201, '运算符', '+', 4), (400, '整数', '3', 4), (203, '运算符', '*', 4), (400, '整数', '4', 4), (307, '分隔符', ';', 4), (600, '注释', '// 缺少右括号', 4), (700, '标识符', 'x', 5), (205, '运算符', '=', 5), (307, '分隔符', ';', 5), (600, '注释', '// 赋值语句缺少对象', 5), (205, '运算符', '=', 6), (400, '整数', '1', 6), (307, '分隔符', ';', 6), (304, '分隔符', '}', 7)]
+    tokens = [(700, '标识符', 'main', 1), (301, '分隔符', '(', 1), (302, '分隔符', ')', 1), (303, '分隔符', '{', 1), (700, '标识符', 'x', 2), (205, '运算符', '=', 2), (307, '分隔符', ';', 2), (600, '注释', '// 赋值语句缺少对象', 2), (205, '运算符', '=', 3), (400, '整数', '1', 3), (307, '分隔符', ';', 3), (304, '分隔符', '}', 4)]
     yufa = Yufa()
     result = yufa.parse(tokens)
     if result['type'] == 'error':

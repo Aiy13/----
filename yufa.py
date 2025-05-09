@@ -510,7 +510,6 @@ if __name__ == '__main__':
         for error in result['errors']:
             print(error)
     else:
-        print("语法分析成功！")
         print("语法树：")
         import json
         print(json.dumps(result, indent=2, ensure_ascii=False))

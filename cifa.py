@@ -208,11 +208,14 @@ class Cifa:
 if __name__ == "__main__":
     cifa = Cifa()
     test_code = """
-    main(){
-        if(x = 0){
-        a = a + 1;
-        }
-        }
+    main()
+{
+    int x = 0;
+    if(x == 0)
+    {
+        x = x + 1;
+    }
+}
 
 """
     tokens = cifa.cifafenxi(test_code)

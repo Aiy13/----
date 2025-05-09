@@ -7,7 +7,8 @@
 """
 class Yufa:
     def __init__(self):
-        self.keywords = {'if', 'else', 'while'}
+        # 添加 int 和 float 作为关键字
+        self.keywords = {'if', 'else', 'while', 'int', 'float'}
         self.tokens = []
         self.current = 0
         self.errors = []
@@ -28,7 +29,6 @@ class Yufa:
                 stmt = self.statement()
                 if stmt:
                     statements.append(stmt)
-                # 如果未生成语句（可能因错误），跳到语句边界但不消耗分号
                 elif self.current_token():
                     self.skip_to_statement_boundary(consume_semicolon=False)
             if not self.current_token() or self.current_token()[2] != '}':
@@ -74,12 +74,50 @@ class Yufa:
         if token[2] == ';':
             self.current += 1
             return {'type': 'empty_statement'}
+        # 检查变量声明（int 或 float 开头）
+        elif token[2] in ['int', 'float']:
+            return self.variable_declaration()
         elif token[2] == 'if':
             return self.if_statement()
         elif token[2] == 'while':
             return self.while_statement()
         else:
             return self.expression_statement()
+
+    def variable_declaration(self):
+        type_token = self.current_token()
+        if not type_token or type_token[2] not in ['int', 'float']:
+            return None
+        var_type = type_token[2]
+        self.current += 1
+        token = self.current_token()
+        if not token or token[1] != '标识符':
+            self.errors.append(f"第{type_token[3]}行：变量声明缺少标识符")
+            self.skip_to([';', '}'])
+            return None
+        var_name = token[2]
+        self.current += 1
+        initializer = None
+        if self.current_token() and self.current_token()[2] == '=':
+            self.current += 1
+            initializer = self.expression()
+            if not initializer:
+                self.errors.append(f"第{type_token[3]}行：变量初始化表达式无效")
+                self.skip_to([';', '}'])
+                return None
+        token = self.current_token()
+        if not token or token[2] != ';':
+            self.errors.append(f"第{type_token[3]}行：变量声明缺少分号")
+            self.skip_to([';', '}'])
+            return None
+        self.current += 1
+        return {
+            'type': 'variable_declaration',
+            'var_type': var_type,
+            'name': var_name,
+            'initializer': initializer,
+            'line': type_token[3]
+        }
 
     def expression_statement(self):
         start_token = self.current_token()
@@ -90,6 +128,8 @@ class Yufa:
             self.skip_to_statement_boundary(consume_semicolon=False)
             return None
         token = self.current_token()
+        if not token or token[2] == ')':
+            self.errors.append(f"第{start_token[3]}行：表达式缺少左括号")
         if not token or token[2] != ';':
             self.errors.append(f"第{start_token[3]}行：表达式缺少分号")
             self.skip_to_statement_boundary(consume_semicolon=False)
@@ -115,10 +155,15 @@ class Yufa:
             if self.current_token() and self.current_token()[2] == ')':
                 self.current += 1
             return None
+        # 检查条件是否为赋值表达式
+        if condition.get('type') =='assignment_expression':
+            self.errors.append(f"第{if_token[3]}行：if条件错误")
+            self.skip_to([')', '{'])
+            return None
         token = self.current_token()
         if not token or token[2] != ')':
             self.errors.append(f"第{if_token[3]}行：if条件缺少右括号")
-            self.skip_to(['}'])
+            self.skip_to(['{'])
             return None
         self.current += 1
         token = self.current_token()
@@ -182,6 +227,11 @@ class Yufa:
             if self.current_token() and self.current_token()[2] == ')':
                 self.current += 1
             return None
+        # 新增：检查条件是否为赋值表达式
+        if condition.get('type') == 'assignment_expression':
+            self.errors.append(f"第{while_token[3]}行：while条件中不能使用赋值表达式")
+            self.skip_to([')', '}'])
+            return None
         token = self.current_token()
         if not token or token[2] != ')':
             self.errors.append(f"第{while_token[3]}行：while条件缺少右括号")
@@ -210,7 +260,7 @@ class Yufa:
             'condition': condition,
             'body': body
         }
-    # 条件表达式
+
     def condition(self):
         return self.bool_or()
 
@@ -308,17 +358,14 @@ class Yufa:
         return self.expression()
 
     def expression(self):
-        """expr -> term rest"""
         token = self.current_token()
         if not token:
             return None
-        # 检测孤立的赋值运算符
         if token[2] == '=':
             self.errors.append(f"第{token[3]}行：缺少左操作数 {token[2]}")
             self.current += 1
             self.skip_to_statement_boundary(consume_semicolon=False)
             return None
-        # 赋值表达式
         if token[1] == '标识符':
             self.current += 1
             if self.current_token() and self.current_token()[2] == '=':
@@ -329,12 +376,11 @@ class Yufa:
                     self.skip_to_statement_boundary(consume_semicolon=False)
                     return None
                 return {
-                    'type': 'assignment_expression',
-                    'left': {'type': 'identifier', 'name': token[2]},
-                    'right': right
-                }
+                        'type': 'assignment_expression',
+                        'left': {'type': 'identifier', 'name': token[2]},
+                        'right': right
+                    }
             self.current -= 1
-        # 一元运算符
         if token[2] in ['+', '-']:
             self.current += 1
             operand = self.factor()
@@ -351,7 +397,6 @@ class Yufa:
                 'operator': token[2],
                 'operand': operand
             }
-        # 算术表达式
         return self.arithmetic_expression()
 
     def arithmetic_expression(self):
@@ -450,14 +495,14 @@ class Yufa:
             self.current += 1
 
     def skip_to_statement_boundary(self, consume_semicolon=True):
-        while self.current < len(self.tokens) and self.current_token() and self.current_token()[2] not in [';', '}', 'if', 'while', 'else']:
+        while self.current < len(self.tokens) and self.current_token() and self.current_token()[2] not in ['{', ';', '}', 'if', 'while', 'else', 'int', 'float']:
             self.current += 1
         if consume_semicolon and self.current < len(self.tokens) and self.current_token() and self.current_token()[2] == ';':
             self.current += 1
 
 
 if __name__ == '__main__':
-    tokens = [(700, '标识符', 'main', 1), (301, '分隔符', '(', 1), (302, '分隔符', ')', 1), (303, '分隔符', '{', 1), (700, '标识符', 'x', 2), (205, '运算符', '=', 2), (307, '分隔符', ';', 2), (600, '注释', '// 赋值语句缺少对象', 2), (205, '运算符', '=', 3), (400, '整数', '1', 3), (307, '分隔符', ';', 3), (304, '分隔符', '}', 4)]
+    tokens = [(700, '标识符', 'main', 1), (301, '分隔符', '(', 1), (302, '分隔符', ')', 1), (303, '分隔符', '{', 2), (106, '关键字', 'int', 3), (700, '标识符', 'x', 3), (205, '运算符', '=', 3), (400, '整数', '0', 3), (307, '分隔符', ';', 3), (101, '关键字', 'if', 4), (301, '分隔符', '(', 4), (700, '标识符', 'x', 4), (206, '运算符', '==', 4), (400, '整数', '0', 4), (302, '分隔符', ')', 4), (303, '分隔符', '{', 5), (700, '标识符', 'x', 6), (205, '运算符', '=', 6), (700, '标识符', 'x', 6), (201, '运算符', '+', 6), (400, '整数', '1', 6), (307, '分隔符', ';', 6), (304, '分隔符', '}', 7), (304, '分隔符', '}', 8)]
     yufa = Yufa()
     result = yufa.parse(tokens)
     if result['type'] == 'error':

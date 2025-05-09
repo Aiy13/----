@@ -90,6 +90,8 @@ class Yufa:
             self.skip_to_statement_boundary(consume_semicolon=False)
             return None
         token = self.current_token()
+        if not token or token[2] == ')':
+            self.errors.append(f"第{start_token[3]}行：表达式缺少左括号")
         if not token or token[2] != ';':
             self.errors.append(f"第{start_token[3]}行：表达式缺少分号")
             self.skip_to_statement_boundary(consume_semicolon=False)
@@ -457,7 +459,7 @@ class Yufa:
 
 
 if __name__ == '__main__':
-    tokens = [(700, '标识符', 'main', 1), (301, '分隔符', '(', 1), (302, '分隔符', ')', 1), (303, '分隔符', '{', 1), (700, '标识符', 'x', 2), (205, '运算符', '=', 2), (307, '分隔符', ';', 2), (600, '注释', '// 赋值语句缺少对象', 2), (205, '运算符', '=', 3), (400, '整数', '1', 3), (307, '分隔符', ';', 3), (304, '分隔符', '}', 4)]
+    tokens = [(700, '标识符', 'main', 1), (301, '分隔符', '(', 1), (302, '分隔符', ')', 1), (303, '分隔符', '{', 1), (101, '关键字', 'if', 2), (301, '分隔符', '(', 2), (700, '标识符', 'x', 2), (205, '运算符', '=', 2), (400, '整数', '0', 2), (302, '分隔符', ')', 2), (303, '分隔符', '{', 2), (700, '标识符', 'a', 3), (205, '运算符', '=', 3), (700, '标识符', 'a', 3), (201, '运算符', '+', 3), (400, '整数', '1', 3), (307, '分隔符', ';', 3), (304, '分隔符', '}', 4), (304, '分隔符', '}', 5)]
     yufa = Yufa()
     result = yufa.parse(tokens)
     if result['type'] == 'error':

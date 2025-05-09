@@ -209,7 +209,10 @@ if __name__ == "__main__":
     cifa = Cifa()
     test_code = """
     main(){
-        if (c == a {
+        if(x = 0){
+        a = a + 1;
+        }
+        }
 
 """
     tokens = cifa.cifafenxi(test_code)

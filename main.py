@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (QMainWindow, QApplication, QTextEdit, QTableWidget, QTableWidgetItem,
                              QFileDialog, QMessageBox, QAction, QStyleFactory, QVBoxLayout, QWidget,
-                             QDialog, QLabel)
+                             QDialog, QLabel, QPushButton, QHBoxLayout, QScrollArea)
 from PyQt5.QtGui import QFont, QPixmap
 from PyQt5.QtCore import Qt
 import sys
@@ -10,6 +10,7 @@ from yufa import Yufa
 from graphviz import Digraph
 import tempfile
 import os
+from yuyi import Yuyi
 
 
 class SyntaxTreeDialog(QDialog):
@@ -19,6 +20,7 @@ class SyntaxTreeDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle('语法树可视化')
         self.setModal(True)
+        self.scale_factor = 1.0  # 缩放因子
 
         # 设置对话框大小
         self.resize(1000, 800)
@@ -28,6 +30,94 @@ class SyntaxTreeDialog(QDialog):
         layout.setContentsMargins(12, 12, 12, 12)
         layout.setSpacing(8)
         self.setLayout(layout)
+
+        # 创建工具栏
+        toolbar = QWidget()
+        toolbar_layout = QHBoxLayout()
+        toolbar_layout.setContentsMargins(0, 0, 0, 0)
+        toolbar.setLayout(toolbar_layout)
+
+        # 添加缩放按钮
+        zoom_in_btn = QPushButton('放大')
+        zoom_out_btn = QPushButton('缩小')
+        reset_btn = QPushButton('重置')
+        
+        # 设置按钮样式
+        button_style = """
+            QPushButton {
+                background-color: #353535;
+                color: #d4d4d4;
+                border: 1px solid #3c3c3c;
+                padding: 6px 12px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #007acc;
+                color: #ffffff;
+            }
+            QPushButton:pressed {
+                background-color: #005f99;
+            }
+        """
+        zoom_in_btn.setStyleSheet(button_style)
+        zoom_out_btn.setStyleSheet(button_style)
+        reset_btn.setStyleSheet(button_style)
+
+        # 连接按钮信号
+        zoom_in_btn.clicked.connect(self.zoom_in)
+        zoom_out_btn.clicked.connect(self.zoom_out)
+        reset_btn.clicked.connect(self.reset_zoom)
+
+        # 添加按钮到工具栏
+        toolbar_layout.addWidget(zoom_in_btn)
+        toolbar_layout.addWidget(zoom_out_btn)
+        toolbar_layout.addWidget(reset_btn)
+        toolbar_layout.addStretch()
+
+        layout.addWidget(toolbar)
+
+        # 创建滚动区域
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setStyleSheet("""
+            QScrollArea {
+                background-color: #2b2b2b;
+                border: 1px solid #3c3c3c;
+                border-radius: 8px;
+            }
+            QScrollBar:vertical {
+                border: none;
+                background: #2b2b2b;
+                width: 12px;
+                margin: 0px;
+            }
+            QScrollBar::handle:vertical {
+                background: #4a4a4a;
+                border-radius: 6px;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+                background: none;
+            }
+            QScrollBar:horizontal {
+                border: none;
+                background: #2b2b2b;
+                height: 12px;
+                margin: 0px;
+            }
+            QScrollBar::handle:horizontal {
+                background: #4a4a4a;
+                border-radius: 6px;
+            }
+            QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+                width: 0px;
+            }
+            QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+                background: none;
+            }
+        """)
 
         # 创建图片标签
         self.image_label = QLabel()
@@ -40,7 +130,10 @@ class SyntaxTreeDialog(QDialog):
                 padding: 10px;
             }
         """)
-        layout.addWidget(self.image_label)
+        
+        # 将图片标签添加到滚动区域
+        scroll_area.setWidget(self.image_label)
+        layout.addWidget(scroll_area)
 
         # 设置样式
         self.setStyleSheet("""
@@ -51,9 +144,38 @@ class SyntaxTreeDialog(QDialog):
 
     def show_tree(self, image_path):
         """显示语法树图片"""
-        pixmap = QPixmap(image_path)
-        scaled_pixmap = pixmap.scaled(self.image_label.size(), Qt.KeepAspectRatio, Qt.SmoothTransformation)
-        self.image_label.setPixmap(scaled_pixmap)
+        self.original_pixmap = QPixmap(image_path)
+        self.update_image()
+
+    def update_image(self):
+        """更新图片显示"""
+        if hasattr(self, 'original_pixmap'):
+            # 将浮点数转换为整数
+            new_width = int(self.original_pixmap.width() * self.scale_factor)
+            new_height = int(self.original_pixmap.height() * self.scale_factor)
+            
+            scaled_pixmap = self.original_pixmap.scaled(
+                new_width,
+                new_height,
+                Qt.KeepAspectRatio,
+                Qt.SmoothTransformation
+            )
+            self.image_label.setPixmap(scaled_pixmap)
+
+    def zoom_in(self):
+        """放大图片"""
+        self.scale_factor *= 1.2
+        self.update_image()
+
+    def zoom_out(self):
+        """缩小图片"""
+        self.scale_factor /= 1.2
+        self.update_image()
+
+    def reset_zoom(self):
+        """重置缩放"""
+        self.scale_factor = 1.0
+        self.update_image()
 
 
 class TextEditor(QMainWindow):
@@ -204,10 +326,14 @@ class TextEditor(QMainWindow):
         yufaFenxi = QAction('语法分析', self)
         yufaFenxi.triggered.connect(self.yufa_fenxi)
 
+        yuyiFenxi = QAction('语义分析', self)
+        yuyiFenxi.triggered.connect(self.yuyi_fenxi)
+
         fileMenu.addAction(newFile)
         fileMenu.addAction(openFile)
         FenxiMenu.addAction(cifaFenxi)
         FenxiMenu.addAction(yufaFenxi)
+        FenxiMenu.addAction(yuyiFenxi)
 
         # 工具栏
         toolbar = self.addToolBar('工具栏')
@@ -488,6 +614,47 @@ class TextEditor(QMainWindow):
                     self.textEdit.setText(self.data)
             except Exception as e:
                 QMessageBox.critical(self, '错误', f'无法打开文件: {str(e)}')
+
+    def yuyi_fenxi(self):
+        if not hasattr(self, 'tokens') or not self.tokens:
+            QMessageBox.warning(self, '警告', '请先进行词法分析！')
+            return
+
+        # 先进行语法分析
+        yufa = Yufa()
+        ast = yufa.parse(self.tokens)
+        
+        if ast['type'] == 'error':
+            QMessageBox.warning(self, '语法错误', '\n'.join(ast['errors']))
+            return
+        
+        # 进行语义分析
+        yuyi = Yuyi()
+        result = yuyi.analyze(ast)
+        
+        # 显示语义分析结果
+        if result['type'] == 'error':
+            QMessageBox.warning(self, '语义错误', '\n'.join(result['errors']))
+        else:
+            # 显示符号表
+            self.tableWidget.clear()
+            self.tableWidget.setRowCount(0)
+            self.tableWidget.setColumnCount(2)
+            self.tableWidget.setHorizontalHeaderLabels(['变量名', '类型'])
+            
+            for var_name, var_type in result['symbol_table'].items():
+                row = self.tableWidget.rowCount()
+                self.tableWidget.insertRow(row)
+                self.tableWidget.setItem(row, 0, QTableWidgetItem(var_name))
+                self.tableWidget.setItem(row, 1, QTableWidgetItem(var_type))
+            
+            self.tableWidget.resizeColumnsToContents()
+            
+            # 显示语义错误
+            if result['errors']:
+                QMessageBox.warning(self, '语义错误', '\n'.join(result['errors']))
+            else:
+                QMessageBox.information(self, '语义分析', '语义分析通过，未发现错误！')
 
 
 if __name__ == '__main__':

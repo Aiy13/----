@@ -376,10 +376,11 @@ class Yufa:
                     self.skip_to_statement_boundary(consume_semicolon=False)
                     return None
                 return {
-                        'type': 'assignment_expression',
-                        'left': {'type': 'identifier', 'name': token[2]},
-                        'right': right
-                    }
+                    'type': 'assignment_expression',
+                    'left': {'type': 'identifier', 'name': token[2], 'line': token[3]},
+                    'right': right,
+                    'line': token[3]
+                }
             self.current -= 1
         if token[2] in ['+', '-']:
             self.current += 1
@@ -395,7 +396,8 @@ class Yufa:
             return {
                 'type': 'unary_expression',
                 'operator': token[2],
-                'operand': operand
+                'operand': operand,
+                'line': token[3]
             }
         return self.arithmetic_expression()
 
@@ -420,7 +422,8 @@ class Yufa:
                 'type': 'binary_expression',
                 'operator': op_token[2],
                 'left': left,
-                'right': right
+                'right': right,
+                'line': op_token[3]
             }
         return left
 
@@ -445,7 +448,8 @@ class Yufa:
                 'type': 'binary_expression',
                 'operator': op_token[2],
                 'left': left,
-                'right': right
+                'right': right,
+                'line': op_token[3]
             }
         return left
 
@@ -459,12 +463,14 @@ class Yufa:
         if token[1] in ['整数', '浮点数']:
             return {
                 'type': 'number',
-                'value': token[2]
+                'value': token[2],
+                'line': token[3]
             }
         elif token[1] == '标识符':
             return {
                 'type': 'identifier',
-                'name': token[2]
+                'name': token[2],
+                'line': token[3]
             }
         elif token[2] == '(':
             expr = self.expression()

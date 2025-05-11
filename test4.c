@@ -8,7 +8,8 @@ main() {
     if (x) {  // 类型错误：if条件应为bool类型
         y = 10;
     }
-    
+
+
     while (z > 0) {
         z = z - 1;
     }

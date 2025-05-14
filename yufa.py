@@ -30,7 +30,7 @@ class Yufa:
                 if stmt:
                     statements.append(stmt)
                 elif self.current_token():
-                    self.skip_to_statement_boundary(consume_semicolon=False)
+                    self.skip_to_nextline()
             if not self.current_token() or self.current_token()[2] != '}':
                 self.errors.append("main函数缺少右大括号")
             else:
@@ -93,7 +93,7 @@ class Yufa:
         token = self.current_token()
         if not token or token[1] != '标识符':
             self.errors.append(f"第{type_token[3]}行：变量声明缺少标识符")
-            self.skip_to([';', '}'])
+            self.skip_to_nextline()
             return None
         var_name = token[2]
         self.current += 1
@@ -103,12 +103,12 @@ class Yufa:
             initializer = self.expression()
             if not initializer:
                 self.errors.append(f"第{type_token[3]}行：变量初始化表达式无效")
-                self.skip_to([';', '}'])
+                self.skip_to_nextline()
                 return None
         token = self.current_token()
         if not token or token[2] != ';':
             self.errors.append(f"第{type_token[3]}行：变量声明缺少分号")
-            self.skip_to([';', '}'])
+            self.skip_to_nextline()
             return None
         self.current += 1
         return {
@@ -125,14 +125,15 @@ class Yufa:
             return None
         expr = self.expression()
         if expr is None:
-            self.skip_to_statement_boundary(consume_semicolon=False)
+            self.skip_to_nextline()
             return None
         token = self.current_token()
         if not token or token[2] == ')':
             self.errors.append(f"第{start_token[3]}行：表达式缺少左括号")
         if not token or token[2] != ';':
             self.errors.append(f"第{start_token[3]}行：表达式缺少分号")
-            self.skip_to_statement_boundary(consume_semicolon=False)
+            self.current-=1
+            self.skip_to_nextline()
             return None
         self.current += 1
         return expr
@@ -142,124 +143,139 @@ class Yufa:
         if not if_token:
             return None
         self.current += 1
+        
+        # 初始化结果
+        result = {
+            'type': 'if_statement',
+            'line': if_token[3],
+            'condition': None,
+            'body': [],
+            'else': None
+        }
+        
+        # 检查左括号
         token = self.current_token()
         if not token or token[2] != '(':
             self.errors.append(f"第{if_token[3]}行：if后缺少左括号")
-            self.skip_to([')', '}'])
-            return None
-        self.current += 1
+        else:
+            self.current += 1
+        
+        # 检查条件表达式
         condition = self.condition()
         if not condition:
             self.errors.append(f"第{if_token[3]}行：if条件表达式错误")
-            self.skip_to([')', '}'])
-            if self.current_token() and self.current_token()[2] == ')':
-                self.current += 1
-            return None
-        # 检查条件是否为赋值表达式
-        if condition.get('type') =='assignment_expression':
-            self.errors.append(f"第{if_token[3]}行：if条件错误")
-            self.skip_to([')', '{'])
-            return None
+        else:
+            result['condition'] = condition
+            # 检查条件是否为赋值表达式
+            if condition.get('type') == 'assignment_expression':
+                self.errors.append(f"第{if_token[3]}行：if条件错误")
+        
+        # 检查右括号
         token = self.current_token()
         if not token or token[2] != ')':
             self.errors.append(f"第{if_token[3]}行：if条件缺少右括号")
-            self.skip_to(['{'])
-            return None
-        self.current += 1
+        else:
+            self.current += 1
+        
+        # 检查左大括号
         token = self.current_token()
         if not token or token[2] != '{':
             self.errors.append(f"第{if_token[3]}行：if后缺少左大括号")
-            self.skip_to(['}'])
-            return None
-        self.current += 1
-        body = []
+        else:
+            self.current += 1
+        
+        # 解析if体
         while self.current < len(self.tokens) and self.current_token() and self.current_token()[2] != '}':
             stmt = self.statement()
             if stmt:
-                body.append(stmt)
+                result['body'].append(stmt)
+        # 检查右大括号
         token = self.current_token()
         if not token or token[2] != '}':
             self.errors.append(f"第{if_token[3]}行：if后缺少右大括号")
-            return None
-        self.current += 1
-        else_body = None
+        else:
+            self.current += 1
+        
+        # 检查else部分
         if self.current_token() and self.current_token()[2] == 'else':
             self.current += 1
             token = self.current_token()
             if not token or token[2] != '{':
                 self.errors.append(f"第{if_token[3]}行：else后缺少左大括号")
-                self.skip_to(['}'])
-                return None
-            self.current += 1
-            else_body = []
-            while self.current < len(self.tokens) and self.current_token() and self.current_token()[2] != '}':
-                stmt = self.statement()
-                if stmt:
-                    else_body.append(stmt)
-            token = self.current_token()
-            if not token or token[2] != '}':
-                self.errors.append(f"第{if_token[3]}行：else后缺少右大括号")
-                return None
-            self.current += 1
-        return {
-            'type': 'if_statement',
-            'line': if_token[3],
-            'condition': condition,
-            'body': body,
-            'else': else_body
-        }
+            else:
+                self.current += 1
+                result['else'] = []
+                while self.current < len(self.tokens) and self.current_token() and self.current_token()[2] != '}':
+                    stmt = self.statement()
+                    if stmt:
+                        result['else'].append(stmt)
+                token = self.current_token()
+                if not token or token[2] != '}':
+                    self.errors.append(f"第{if_token[3]}行：else后缺少右大括号")
+                else:
+                    self.current += 1
+        
+        return result
 
     def while_statement(self):
         while_token = self.current_token()
         if not while_token:
             return None
         self.current += 1
+        
+        # 初始化结果
+        result = {
+            'type': 'while_statement',
+            'line': while_token[3],
+            'condition': None,
+            'body': []
+        }
+        
+        # 检查左括号
         token = self.current_token()
         if not token or token[2] != '(':
             self.errors.append(f"第{while_token[3]}行：while后缺少左括号")
-            self.skip_to([')', '}'])
-            return None
-        self.current += 1
+        else:
+            self.current += 1
+        
+        # 检查条件表达式
         condition = self.condition()
         if not condition:
             self.errors.append(f"第{while_token[3]}行：while条件表达式错误")
-            self.skip_to([')', '}'])
-            if self.current_token() and self.current_token()[2] == ')':
-                self.current += 1
-            return None
-        # 新增：检查条件是否为赋值表达式
-        if condition.get('type') == 'assignment_expression':
-            self.errors.append(f"第{while_token[3]}行：while条件中不能使用赋值表达式")
-            self.skip_to([')', '}'])
-            return None
+        else:
+            result['condition'] = condition
+            # 检查条件是否为赋值表达式
+            if condition.get('type') == 'assignment_expression':
+                self.errors.append(f"第{while_token[3]}行：while条件中不能使用赋值表达式")
+        
+        # 检查右括号
         token = self.current_token()
         if not token or token[2] != ')':
             self.errors.append(f"第{while_token[3]}行：while条件缺少右括号")
-            self.skip_to(['}'])
-            return None
-        self.current += 1
+        else:
+            self.current += 1
+        
+        # 检查左大括号
         token = self.current_token()
         if not token or token[2] != '{':
             self.errors.append(f"第{while_token[3]}行：while后缺少左大括号")
-            self.skip_to(['}'])
-            return None
-        self.current += 1
-        body = []
+        else:
+            self.current += 1
+        
+        # 解析while体
         while self.current < len(self.tokens) and self.current_token() and self.current_token()[2] != '}':
             stmt = self.statement()
             if stmt:
-                body.append(stmt)
+                result['body'].append(stmt)
+        
+        # 检查右大括号
         token = self.current_token()
         if not token or token[2] != '}':
             self.errors.append(f"第{while_token[3]}行：while后缺少右大括号")
-            return None
-        self.current += 1
-        return {
-            'type': 'while_statement',
-            'line': while_token[3],
-            'condition': condition,
-            'body': body
-        }
+        else:
+            self.current += 1
+        
+        return result
 
     def condition(self):
         return self.bool_or()
@@ -364,7 +380,7 @@ class Yufa:
         if token[2] == '=':
             self.errors.append(f"第{token[3]}行：缺少左操作数 {token[2]}")
             self.current += 1
-            self.skip_to_statement_boundary(consume_semicolon=False)
+            self.skip_to_nextline()
             return None
         if token[1] == '标识符':
             self.current += 1
@@ -373,7 +389,7 @@ class Yufa:
                 right = self.expression()
                 if not right:
                     self.errors.append(f"第{token[3]}行：赋值表达式缺少右操作数")
-                    self.skip_to_statement_boundary(consume_semicolon=False)
+                    self.skip_to_nextline()
                     return None
                 return {
                         'type': 'assignment_expression',
@@ -386,11 +402,11 @@ class Yufa:
             operand = self.factor()
             if not operand:
                 self.errors.append(f"第{token[3]}行：一元运算符{token[2]}缺少操作数")
-                self.skip_to_statement_boundary(consume_semicolon=False)
+                self.skip_to_nextline()
                 return None
             if operand['type'] not in ['number']:
                 self.errors.append(f"第{token[3]}行：一元运算符{token[2]}的操作数必须是数字")
-                self.skip_to_statement_boundary(consume_semicolon=False)
+                self.skip_to_nextline()
                 return None
             return {
                 'type': 'unary_expression',
@@ -409,12 +425,12 @@ class Yufa:
             next_token = self.current_token()
             if next_token and next_token[2] in ['+', '-']:
                 self.errors.append(f"第{next_token[3]}行：无效的运算符序列 {next_token[2]}")
-                self.skip_to_statement_boundary(consume_semicolon=False)
+                self.skip_to_nextline()
                 return None
             right = self.term()
             if not right:
                 self.errors.append(f"第{op_token[3]}行：运算符{op_token[2]}缺少右操作数")
-                self.skip_to_statement_boundary(consume_semicolon=False)
+                self.skip_to_nextline()
                 return None
             left = {
                 'type': 'binary_expression',
@@ -434,12 +450,12 @@ class Yufa:
             next_token = self.current_token()
             if not next_token or next_token[2] in ['*', '/', ';']:
                 self.errors.append(f"第{op_token[3]}行：运算符{op_token[2]}缺少右操作数")
-                self.skip_to_statement_boundary(consume_semicolon=False)
+                self.skip_to_nextline()
                 return None
             right = self.factor()
             if not right:
                 self.errors.append(f"第{op_token[3]}行：运算符{op_token[2]}缺少右操作数")
-                self.skip_to_statement_boundary(consume_semicolon=False)
+                self.skip_to_nextline()
                 return None
             left = {
                 'type': 'binary_expression',
@@ -470,7 +486,7 @@ class Yufa:
             expr = self.expression()
             if not expr:
                 self.errors.append(f"第{token[3]}行：括号内的表达式无效")
-                self.skip_to([')', ';', '}'])
+                self.skip_to_nextline()
                 return None
             token = self.current_token()
             if not token or token[2] != ')':
@@ -480,29 +496,25 @@ class Yufa:
             return expr
         elif token[1] == '符号' and token[2] not in self.valid_operators:
             self.errors.append(f"第{token[3]}行：无效运算符 {token[2]}")
-            self.skip_to_statement_boundary(consume_semicolon=False)
+            self.skip_to_nextline()
             return None
-        self.skip_to_statement_boundary(consume_semicolon=False)
+        self.skip_to_nextline()
         return None
 
     def current_token(self):
         return self.tokens[self.current] if self.current < len(self.tokens) else None
 
-    def skip_to(self, targets):
-        while self.current < len(self.tokens) and self.current_token() and self.current_token()[2] not in targets:
-            self.current += 1
-        if self.current < len(self.tokens) and self.current_token() and self.current_token()[2] in targets:
-            self.current += 1
-
-    def skip_to_statement_boundary(self, consume_semicolon=True):
-        while self.current < len(self.tokens) and self.current_token() and self.current_token()[2] not in ['{', ';', '}', 'if', 'while', 'else', 'int', 'float']:
-            self.current += 1
-        if consume_semicolon and self.current < len(self.tokens) and self.current_token() and self.current_token()[2] == ';':
+    def skip_to_nextline(self):
+        """跳过当前行的剩余token"""
+        if not self.current_token():
+            return
+        line = self.current_token()[3]  # 获取当前token的行号
+        while self.current < len(self.tokens) and self.current_token() and self.current_token()[3] == line:
             self.current += 1
 
 
 if __name__ == '__main__':
-    tokens = [(700, '标识符', 'main', 1), (301, '分隔符', '(', 1), (302, '分隔符', ')', 1), (303, '分隔符', '{', 2), (106, '关键字', 'int', 3), (700, '标识符', 'x', 3), (205, '运算符', '=', 3), (400, '整数', '0', 3), (307, '分隔符', ';', 3), (101, '关键字', 'if', 4), (301, '分隔符', '(', 4), (700, '标识符', 'x', 4), (206, '运算符', '==', 4), (400, '整数', '0', 4), (302, '分隔符', ')', 4), (303, '分隔符', '{', 5), (700, '标识符', 'x', 6), (205, '运算符', '=', 6), (700, '标识符', 'x', 6), (201, '运算符', '+', 6), (400, '整数', '1', 6), (307, '分隔符', ';', 6), (304, '分隔符', '}', 7), (304, '分隔符', '}', 8)]
+    tokens = [(700, '标识符', 'main', 1), (301, '分隔符', '(', 1), (302, '分隔符', ')', 1), (303, '分隔符', '{', 2), (106, '关键字', 'int', 3), (700, '标识符', 'x', 3), (205, '运算符', '=', 3), (400, '整数', '0', 3), (307, '分隔符', ';', 3), (101, '关键字', 'if', 4), (301, '分隔符', '(', 4), (700, '标识符', 'x', 4), (205, '运算符', '=', 4), (400, '整数', '0', 4), (302, '分隔符', ')', 4), (303, '分隔符', '{', 5), (700, '标识符', 'x', 6), (205, '运算符', '=', 6), (700, '标识符', 'x', 6), (201, '运算符', '+', 6), (400, '整数', '1', 6), (304, '分隔符', '}', 7), (304, '分隔符', '}', 8)]
     yufa = Yufa()
     result = yufa.parse(tokens)
     if result['type'] == 'error':

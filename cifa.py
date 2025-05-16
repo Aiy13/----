@@ -210,11 +210,13 @@ if __name__ == "__main__":
     test_code = """
     main()
 {
-    int x = 0;
-    if(x == 0)
+    a+b
+    if(x=1)
     {
-        x = x + 1;
+        a = 1
+        a + ;
     }
+    +a;
 }
 
 """

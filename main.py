@@ -1,5 +1,5 @@
 from PyQt5.QtWidgets import (QMainWindow, QApplication, QTextEdit, QTableWidget, QTableWidgetItem,
-                             QFileDialog, QMessageBox, QAction, QStyleFactory, QVBoxLayout, QWidget,
+                             QFileDialog, QAction, QStyleFactory, QVBoxLayout, QWidget,
                              QDialog, QLabel, QPushButton, QHBoxLayout, QScrollArea)
 from PyQt5.QtGui import QFont, QPixmap
 from PyQt5.QtCore import Qt
@@ -8,9 +8,9 @@ import pandas as pd
 from cifa import Cifa
 from yufa import Yufa
 from graphviz import Digraph
-import tempfile
 import os
 from yuyi import Yuyi
+from zhongjian import Zhongjian
 
 
 class SyntaxTreeDialog(QDialog):
@@ -41,7 +41,7 @@ class SyntaxTreeDialog(QDialog):
         zoom_in_btn = QPushButton('放大')
         zoom_out_btn = QPushButton('缩小')
         reset_btn = QPushButton('重置')
-        
+
         # 设置按钮样式
         button_style = """
             QPushButton {
@@ -130,7 +130,7 @@ class SyntaxTreeDialog(QDialog):
                 padding: 10px;
             }
         """)
-        
+
         # 将图片标签添加到滚动区域
         scroll_area.setWidget(self.image_label)
         layout.addWidget(scroll_area)
@@ -153,7 +153,7 @@ class SyntaxTreeDialog(QDialog):
             # 将浮点数转换为整数
             new_width = int(self.original_pixmap.width() * self.scale_factor)
             new_height = int(self.original_pixmap.height() * self.scale_factor)
-            
+
             scaled_pixmap = self.original_pixmap.scaled(
                 new_width,
                 new_height,
@@ -177,19 +177,17 @@ class SyntaxTreeDialog(QDialog):
         self.scale_factor = 1.0
         self.update_image()
 
-
 class TextEditor(QMainWindow):
     def __init__(self):
         super().__init__()
         self.data = ""
         self.tokens = []
+        self.ast = None  # 添加 ast 属性存储语法树
         self.initUI()
 
     def initUI(self):
-        # 设置应用样式
         QApplication.setStyle(QStyleFactory.create('Fusion'))
 
-        # 创建主布局
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
         self.layout = QVBoxLayout(self.central_widget)
@@ -201,9 +199,9 @@ class TextEditor(QMainWindow):
         self.textEdit.setFont(QFont('Consolas', 12))
         self.textEdit.setStyleSheet("""
             QTextEdit {
-                background-color: #2b2b2b;
-                color: #d4d4d4;
-                border: 1px solid #3c3c3c;
+                background-color: #ffffff;
+                color: #333333;
+                border: 1px solid #cccccc;
                 border-radius: 8px;
                 padding: 10px;
                 selection-background-color: #007acc;
@@ -214,19 +212,16 @@ class TextEditor(QMainWindow):
             }
             QScrollBar:vertical {
                 border: none;
-                background: #2b2b2b;
+                background: #f0f0f0;
                 width: 12px;
                 margin: 0px;
             }
             QScrollBar::handle:vertical {
-                background: #4a4a4a;
+                background: #cccccc;
                 border-radius: 6px;
             }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
                 height: 0px;
-            }
-            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
-                background: none;
             }
         """)
         self.layout.addWidget(self.textEdit)
@@ -235,20 +230,20 @@ class TextEditor(QMainWindow):
         self.tableWidget = QTableWidget()
         self.tableWidget.setStyleSheet("""
             QTableWidget {
-                background-color: #2b2b2b;
-                color: #d4d4d4;
-                border: 1px solid #3c3c3c;
+                background-color: #ffffff;
+                color: #333333;
+                border: 1px solid #cccccc;
                 border-radius: 8px;
-                gridline-color: #3c3c3c;
+                gridline-color: #cccccc;
                 selection-background-color: #007acc;
                 selection-color: #ffffff;
             }
             QHeaderView::section {
-                background-color: #353535;
-                color: #d4d4d4;
+                background-color: #e0e0e0;
+                color: #333333;
                 padding: 8px;
                 border: none;
-                border-bottom: 1px solid #3c3c3c;
+                border-bottom: 1px solid #cccccc;
                 font-weight: bold;
             }
             QTableWidget::item {
@@ -259,12 +254,12 @@ class TextEditor(QMainWindow):
             }
             QScrollBar:vertical {
                 border: none;
-                background: #2b2b2b;
+                background: #f0f0f0;
                 width: 12px;
                 margin: 0px;
             }
             QScrollBar::handle:vertical {
-                background: #4a4a4a;
+                background: #cccccc;
                 border-radius: 6px;
             }
             QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
@@ -273,14 +268,40 @@ class TextEditor(QMainWindow):
         """)
         self.layout.addWidget(self.tableWidget)
 
+        # 错误输出框
+        self.errorOutput = QTextEdit()
+        self.errorOutput.setReadOnly(True)
+        self.errorOutput.setFont(QFont('Consolas', 10))
+        self.errorOutput.setStyleSheet("""
+            QTextEdit {
+                background-color: #fff5f5;
+                color: #a94442;
+                border: 1px solid #ebccd1;
+                border-radius: 8px;
+                padding: 10px;
+            }
+            QScrollBar:vertical {
+                border: none;
+                background: #f0f0f0;
+                width: 12px;
+                margin: 0px;
+            }
+            QScrollBar::handle:vertical {
+                background: #cccccc;
+                border-radius: 6px;
+            }
+        """)
+        self.errorOutput.setMaximumHeight(100)
+        self.layout.addWidget(self.errorOutput)
+
         # 菜单栏
         menubar = self.menuBar()
         menubar.setStyleSheet("""
             QMenuBar {
-                background-color: #353535;
-                color: #d4d4d4;
+                background-color: #e0e0e0;
+                color: #333333;
                 padding: 6px;
-                border-bottom: 1px solid #3c3c3c;
+                border-bottom: 1px solid #cccccc;
             }
             QMenuBar::item {
                 padding: 6px 12px;
@@ -292,9 +313,9 @@ class TextEditor(QMainWindow):
                 border-radius: 4px;
             }
             QMenu {
-                background-color: #353535;
-                color: #d4d4d4;
-                border: 1px solid #3c3c3c;
+                background-color: #e0e0e0;
+                color: #333333;
+                border: 1px solid #cccccc;
                 border-radius: 6px;
                 padding: 4px;
             }
@@ -329,19 +350,22 @@ class TextEditor(QMainWindow):
         yuyiFenxi = QAction('语义分析', self)
         yuyiFenxi.triggered.connect(self.yuyi_fenxi)
 
+        zhongjianFenxi = QAction('生成中间代码', self)  # 新增中间代码生成菜单项
+        zhongjianFenxi.triggered.connect(self.zhongjian_fenxi)
+
         fileMenu.addAction(newFile)
         fileMenu.addAction(openFile)
         FenxiMenu.addAction(cifaFenxi)
         FenxiMenu.addAction(yufaFenxi)
         FenxiMenu.addAction(yuyiFenxi)
+        FenxiMenu.addAction(zhongjianFenxi)  # 添加到分析菜单
 
-        # 工具栏
         toolbar = self.addToolBar('工具栏')
         toolbar.setMovable(False)
         toolbar.setStyleSheet("""
             QToolBar {
-                background-color: #353535;
-                border-bottom: 1px solid #3c3c3c;
+                background-color: #e0e0e0;
+                border-bottom: 1px solid #cccccc;
                 padding: 6px;
                 spacing: 8px;
             }
@@ -349,7 +373,7 @@ class TextEditor(QMainWindow):
                 background-color: transparent;
                 border: none;
                 padding: 8px;
-                color: #d4d4d4;
+                color: #333333;
                 border-radius: 6px;
             }
             QToolButton:hover {
@@ -361,45 +385,37 @@ class TextEditor(QMainWindow):
             }
         """)
 
-        # 窗口设置
         self.setGeometry(100, 100, 900, 700)
         self.setWindowTitle('小小编译器')
         self.setStyleSheet("""
             QMainWindow {
-                background-color: #252525;
-            }
-            QMessageBox {
-                background-color: #2b2b2b;
-                color: #d4d4d4;
-            }
-            QMessageBox QPushButton {
-                background-color: #353535;
-                color: #d4d4d4;
-                border: 1px solid #3c3c3c;
-                padding: 6px 12px;
-                border-radius: 4px;
-            }
-            QMessageBox QPushButton:hover {
-                background-color: #007acc;
-                color: #ffffff;
+                background-color: #f5f5f5;
             }
         """)
         self.show()
 
+    def show_error(self, message):
+        """显示错误信息到错误输出框"""
+        self.errorOutput.setText(message)
+
+    def clear_error(self):
+        """清空错误输出框"""
+        self.errorOutput.clear()
+
     def generate_ast_graph(self, ast):
-        """使用 graphviz 生成语法树图形并返回图片路径"""
         try:
             from graphviz import Digraph
         except ImportError:
-            QMessageBox.critical(self, '错误', '请安装 graphviz 库：pip install graphviz\n并确保安装 Graphviz 软件：https://graphviz.org/download/')
+            self.show_error(
+                '请安装 graphviz 库：pip install graphviz\n并确保安装 Graphviz 软件：https://graphviz.org/download/')
             return None
 
-        # 创建 DOT 图
         dot = Digraph(
             comment='Syntax Tree',
             format='png',
             graph_attr={'rankdir': 'TB', 'bgcolor': '#252525'},
-            node_attr={'shape': 'box', 'style': 'filled', 'fillcolor': '#ADD8E6', 'color': '#000000', 'fontcolor': '#000000', 'fontname': 'Consolas', 'fontsize': '10'},
+            node_attr={'shape': 'box', 'style': 'filled', 'fillcolor': '#ADD8E6', 'color': '#000000',
+                       'fontcolor': '#000000', 'fontname': 'Consolas', 'fontsize': '10'},
             edge_attr={'color': '#555555', 'arrowsize': '1.0'}
         )
 
@@ -407,7 +423,6 @@ class TextEditor(QMainWindow):
             if not node or not isinstance(node, dict):
                 return
 
-            # 创建当前节点的标签
             node_id = str(id(node))
             node_type = node.get('type', '')
             label = node_type
@@ -425,14 +440,10 @@ class TextEditor(QMainWindow):
             elif node_type in ['if_statement', 'while_statement', 'program']:
                 label = node_type
 
-            # 添加节点
             dot.node(node_id, label)
-
-            # 如果有父节点，添加边
             if parent is not None:
                 dot.edge(parent, node_id, label=description if description else '')
 
-            # 递归处理子节点
             if node_type == 'binary_expression':
                 add_node_and_edges(node.get('left'), node_id, 'left')
                 add_node_and_edges(node.get('right'), node_id, 'right')
@@ -456,40 +467,35 @@ class TextEditor(QMainWindow):
                 for stmt in node.get('body', []):
                     add_node_and_edges(stmt, node_id, 'body')
 
-        # 从根节点开始构建图
         add_node_and_edges(ast)
 
-        # 保存图形到用户主目录下的特定文件夹
         output_dir = os.path.expanduser("~/syntax_tree_output")
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
-        # 创建唯一的临时文件
         temp_file = os.path.join(output_dir, f"syntax_tree_{str(id(ast))}.png")
         try:
             dot.render(filename=temp_file[:-4], format='png', cleanup=True)
             return temp_file
         except Exception as e:
-            QMessageBox.critical(self, '错误', f'无法生成语法树图片: {str(e)}')
+            self.show_error(f'无法生成语法树图片: {str(e)}')
             return None
 
     def yufa_fenxi(self):
+        self.clear_error()
         if not hasattr(self, 'tokens') or not self.tokens:
-            QMessageBox.warning(self, '警告', '请先进行词法分析！')
+            self.show_error('请先进行词法分析！')
             return
 
         yufa = Yufa()
-        ast = yufa.parse(self.tokens)
+        self.ast = yufa.parse(self.tokens)
 
-        # 显示语法分析结果（表格）
-        if ast:
-            # 创建结果表格
+        if self.ast:
             self.tableWidget.clear()
             self.tableWidget.setRowCount(0)
             self.tableWidget.setColumnCount(3)
             self.tableWidget.setHorizontalHeaderLabels(['类型', '运算符/值', '说明'])
 
-            # 递归显示语法树结果
             def show_ast(node, description=''):
                 if not node or not isinstance(node, dict):
                     return
@@ -501,10 +507,8 @@ class TextEditor(QMainWindow):
                     self.tableWidget.setItem(row, 0, QTableWidgetItem('运算符'))
                     self.tableWidget.setItem(row, 1, QTableWidgetItem(node['operator']))
                     self.tableWidget.setItem(row, 2, QTableWidgetItem(description))
-
                     show_ast(node.get('left'), '左操作数')
                     show_ast(node.get('right'), '右操作数')
-
                 elif node['type'] == 'number':
                     self.tableWidget.setItem(row, 0, QTableWidgetItem('数值'))
                     self.tableWidget.setItem(row, 1, QTableWidgetItem(node['value']))
@@ -548,12 +552,11 @@ class TextEditor(QMainWindow):
                     for stmt in node.get('body', []):
                         show_ast(stmt, '语句')
 
-            show_ast(ast)
+            show_ast(self.ast)
             self.tableWidget.resizeColumnsToContents()
 
-        # 绘制语法树
-        if ast and ast['type'] != 'error':
-            image_path = self.generate_ast_graph(ast)
+        if self.ast and self.ast['type'] != 'error':
+            image_path = self.generate_ast_graph(self.ast)
             if image_path:
                 dialog = SyntaxTreeDialog(self)
                 try:
@@ -563,32 +566,27 @@ class TextEditor(QMainWindow):
                     if os.path.exists(image_path):
                         os.remove(image_path)
 
-        # 显示错误信息
-        if ast and ast.get('errors'):
-            error_msg = '\n'.join(ast['errors'])
-            QMessageBox.warning(self, '语法错误', error_msg)
+        if self.ast and self.ast.get('errors'):
+            self.show_error('\n'.join(self.ast['errors']))
 
     def cifa_fenxi(self):
+        self.clear_error()
         if not self.textEdit.toPlainText():
-            QMessageBox.warning(self, '警告', '请先输入或打开文件！')
+            self.show_error('请先输入或打开文件！')
             return
 
         cifa = Cifa()
         self.data = self.textEdit.toPlainText()
         self.tokens = cifa.cifafenxi(self.data)
 
-        # 收集非法字符信息
         illegal_tokens = []
         for token in self.tokens:
-            if token[0] == 0:  # 种别码为0的token
+            if token[0] == 0:
                 illegal_tokens.append(f"第{token[3]}行: {token[2]} \t类型: {token[1]}")
 
-        # 如果有非法字符，显示弹窗
         if illegal_tokens:
-            error_message = "发现非法字符：\n\n" + "\n".join(illegal_tokens)
-            QMessageBox.warning(self, '非法字符提示', error_message)
+            self.show_error("发现非法字符：\n" + "\n".join(illegal_tokens))
 
-        # 显示词法分析结果
         df = pd.DataFrame(self.tokens, columns=['种别码', '类型', '值', '行数'])
         self.tableWidget.setRowCount(df.shape[0])
         self.tableWidget.setColumnCount(df.shape[1])
@@ -604,8 +602,10 @@ class TextEditor(QMainWindow):
         self.tokens = []
         self.tableWidget.clear()
         self.tableWidget.setRowCount(0)
+        self.clear_error()
 
     def openFile(self):
+        self.clear_error()
         fname = QFileDialog.getOpenFileName(self, '打开文件')
         if fname[0]:
             try:
@@ -613,49 +613,103 @@ class TextEditor(QMainWindow):
                     self.data = f.read()
                     self.textEdit.setText(self.data)
             except Exception as e:
-                QMessageBox.critical(self, '错误', f'无法打开文件: {str(e)}')
+                self.show_error(f'无法打开文件: {str(e)}')
 
     def yuyi_fenxi(self):
+        self.clear_error()
         if not hasattr(self, 'tokens') or not self.tokens:
-            QMessageBox.warning(self, '警告', '请先进行词法分析！')
+            self.show_error('请先进行词法分析！')
+            return
+        ast = self.ast
+
+        if ast['type'] == 'error':
+            self.show_error('\n'.join(ast['errors']))
             return
 
-        # 先进行语法分析
-        yufa = Yufa()
-        ast = yufa.parse(self.tokens)
-        
-        if ast['type'] == 'error':
-            QMessageBox.warning(self, '语法错误', '\n'.join(ast['errors']))
-            return
-        
-        # 进行语义分析
         yuyi = Yuyi()
         result = yuyi.analyze(ast)
-        
-        # 显示语义分析结果
+
         if result['type'] == 'error':
-            QMessageBox.warning(self, '语义错误', '\n'.join(result['errors']))
+            self.show_error('\n'.join(result['errors']))
         else:
-            # 显示符号表
+            # 显示符号表和函数表
             self.tableWidget.clear()
             self.tableWidget.setRowCount(0)
-            self.tableWidget.setColumnCount(2)
-            self.tableWidget.setHorizontalHeaderLabels(['变量名', '类型'])
-            
-            for var_name, var_type in result['symbol_table'].items():
+            self.tableWidget.setColumnCount(5)
+            self.tableWidget.setHorizontalHeaderLabels(['类别', '符号名', '类型', '作用域', '值/参数'])
+
+            # 添加变量（符号表）
+            for var_info in result['symbol_table']:
                 row = self.tableWidget.rowCount()
                 self.tableWidget.insertRow(row)
-                self.tableWidget.setItem(row, 0, QTableWidgetItem(var_name))
-                self.tableWidget.setItem(row, 1, QTableWidgetItem(var_type))
-            
-            self.tableWidget.resizeColumnsToContents()
-            
-            # 显示语义错误
-            if result['errors']:
-                QMessageBox.warning(self, '语义错误', '\n'.join(result['errors']))
-            else:
-                QMessageBox.information(self, '语义分析', '语义分析通过，未发现错误！')
+                self.tableWidget.setItem(row, 0, QTableWidgetItem('变量'))
+                self.tableWidget.setItem(row, 1, QTableWidgetItem(var_info['name']))
+                self.tableWidget.setItem(row, 2, QTableWidgetItem(var_info['type']))
+                self.tableWidget.setItem(row, 3, QTableWidgetItem(var_info['scope']))
+                self.tableWidget.setItem(row, 4, QTableWidgetItem(str(var_info['value'])))
 
+            # 添加函数（函数表）
+            for func_name, func_info in result['function_table'].items():
+                row = self.tableWidget.rowCount()
+                self.tableWidget.insertRow(row)
+                self.tableWidget.setItem(row, 0, QTableWidgetItem('函数'))
+                self.tableWidget.setItem(row, 1, QTableWidgetItem(func_name))
+                self.tableWidget.setItem(row, 2, QTableWidgetItem(func_info['return_type']))
+                self.tableWidget.setItem(row, 3, QTableWidgetItem('global'))  # Functions assumed global
+                params_str = ', '.join(f"{param[0]}:{param[1]}" for param in func_info['params'])
+                self.tableWidget.setItem(row, 4, QTableWidgetItem(params_str))
+
+            self.tableWidget.resizeColumnsToContents()
+
+            # 显示语义错误或成功信息
+            if result['errors']:
+                self.show_error('\n'.join(result['errors']))
+            else:
+                self.show_error('语义分析通过，未发现错误！')
+
+    def zhongjian_fenxi(self):
+        """生成中间代码（四元式）并显示"""
+        self.clear_error()
+
+        # 检查是否已进行词法分析
+        if not hasattr(self, 'tokens') or not self.tokens:
+            self.show_error('请先进行词法分析！')
+            return
+
+        # 检查是否已进行语法分析
+        if not hasattr(self, 'ast') or not self.ast:
+            self.show_error('请先进行语法分析！')
+            return
+
+        # 检查语法分析是否成功
+        if self.ast['type'] == 'error':
+            self.show_error('语法分析失败，无法生成中间代码！\n' + '\n'.join(self.ast['errors']))
+            return
+
+        try:
+            # 生成四元式
+            zhongjian = Zhongjian()
+            quads = zhongjian.generate(self.ast)
+
+            # 清空表格并设置显示四元式
+            self.tableWidget.clear()
+            self.tableWidget.setRowCount(len(quads))
+            self.tableWidget.setColumnCount(5)
+            self.tableWidget.setHorizontalHeaderLabels(['索引', '操作符', '参数1', '参数2', '结果'])
+
+            # 填充四元式到表格
+            for i, quad in enumerate(quads):
+                self.tableWidget.setItem(i, 0, QTableWidgetItem(str(i)))
+                self.tableWidget.setItem(i, 1, QTableWidgetItem(str(quad[0])))  # 操作符
+                self.tableWidget.setItem(i, 2, QTableWidgetItem(str(quad[1]) if quad[1] is not None else ''))  # 参数1
+                self.tableWidget.setItem(i, 3, QTableWidgetItem(str(quad[2]) if quad[2] is not None else ''))  # 参数2
+                self.tableWidget.setItem(i, 4, QTableWidgetItem(str(quad[3]) if quad[3] is not None else ''))  # 结果
+
+            self.tableWidget.resizeColumnsToContents()
+            self.show_error('中间代码生成成功！')
+
+        except Exception as e:
+            self.show_error(f'中间代码生成失败: {str(e)}')
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)

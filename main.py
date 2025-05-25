@@ -11,6 +11,7 @@ from graphviz import Digraph
 import os
 from yuyi import Yuyi
 from zhongjian import Zhongjian
+from mubiao import Mubiao  # 新增导入目标代码生成模块
 
 
 class SyntaxTreeDialog(QDialog):
@@ -177,12 +178,129 @@ class SyntaxTreeDialog(QDialog):
         self.scale_factor = 1.0
         self.update_image()
 
+
+class AssemblyCodeDialog(QDialog):
+    """汇编代码显示对话框"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle('目标代码 - MIPS汇编')
+        self.setModal(True)
+
+        # 设置对话框大小
+        self.resize(800, 600)
+
+        # 创建布局
+        layout = QVBoxLayout()
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
+        self.setLayout(layout)
+
+        # 创建工具栏
+        toolbar = QWidget()
+        toolbar_layout = QHBoxLayout()
+        toolbar_layout.setContentsMargins(0, 0, 0, 0)
+        toolbar.setLayout(toolbar_layout)
+
+        # 添加保存按钮
+        save_btn = QPushButton('保存汇编代码')
+
+        # 设置按钮样式
+        button_style = """
+            QPushButton {
+                background-color: #353535;
+                color: #d4d4d4;
+                border: 1px solid #3c3c3c;
+                padding: 6px 12px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #007acc;
+                color: #ffffff;
+            }
+            QPushButton:pressed {
+                background-color: #005f99;
+            }
+        """
+        save_btn.setStyleSheet(button_style)
+        save_btn.clicked.connect(self.save_code)
+
+        toolbar_layout.addWidget(save_btn)
+        toolbar_layout.addStretch()
+
+        layout.addWidget(toolbar)
+
+        # 创建文本编辑器显示汇编代码
+        self.code_editor = QTextEdit()
+        self.code_editor.setReadOnly(True)
+        self.code_editor.setFont(QFont('Consolas', 11))
+        self.code_editor.setStyleSheet("""
+            QTextEdit {
+                background-color: #1e1e1e;
+                color: #d4d4d4;
+                border: 1px solid #3c3c3c;
+                border-radius: 8px;
+                padding: 10px;
+                selection-background-color: #007acc;
+                selection-color: #ffffff;
+            }
+            QScrollBar:vertical {
+                border: none;
+                background: #2b2b2b;
+                width: 12px;
+                margin: 0px;
+            }
+            QScrollBar::handle:vertical {
+                background: #4a4a4a;
+                border-radius: 6px;
+            }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+                height: 0px;
+            }
+            QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+                background: none;
+            }
+        """)
+
+        layout.addWidget(self.code_editor)
+
+        # 设置对话框样式
+        self.setStyleSheet("""
+            QDialog {
+                background-color: #252525;
+            }
+        """)
+
+    def show_code(self, assembly_code):
+        """显示汇编代码"""
+        self.assembly_code = assembly_code
+        self.code_editor.setText(assembly_code)
+
+    def save_code(self):
+        """保存汇编代码到文件"""
+        try:
+            filename, _ = QFileDialog.getSaveFileName(
+                self,
+                '保存汇编代码',
+                'output.asm',
+                'Assembly Files (*.asm);;All Files (*)'
+            )
+            if filename:
+                with open(filename, 'w', encoding='utf-8') as f:
+                    f.write(self.assembly_code)
+                # 这里可以添加成功保存的提示
+        except Exception as e:
+            # 这里可以添加错误处理
+            pass
+
+
 class TextEditor(QMainWindow):
     def __init__(self):
         super().__init__()
         self.data = ""
         self.tokens = []
         self.ast = None  # 添加 ast 属性存储语法树
+        self.quads = []  # 新增四元式存储
         self.initUI()
 
     def initUI(self):
@@ -350,15 +468,20 @@ class TextEditor(QMainWindow):
         yuyiFenxi = QAction('语义分析', self)
         yuyiFenxi.triggered.connect(self.yuyi_fenxi)
 
-        zhongjianFenxi = QAction('生成中间代码', self)  # 新增中间代码生成菜单项
+        zhongjianFenxi = QAction('生成中间代码', self)
         zhongjianFenxi.triggered.connect(self.zhongjian_fenxi)
+
+        # 新增目标代码生成菜单项
+        mubiaoFenxi = QAction('生成目标代码', self)
+        mubiaoFenxi.triggered.connect(self.mubiao_fenxi)
 
         fileMenu.addAction(newFile)
         fileMenu.addAction(openFile)
         FenxiMenu.addAction(cifaFenxi)
         FenxiMenu.addAction(yufaFenxi)
         FenxiMenu.addAction(yuyiFenxi)
-        FenxiMenu.addAction(zhongjianFenxi)  # 添加到分析菜单
+        FenxiMenu.addAction(zhongjianFenxi)
+        FenxiMenu.addAction(mubiaoFenxi)  # 添加到分析菜单
 
         toolbar = self.addToolBar('工具栏')
         toolbar.setMovable(False)
@@ -600,6 +723,8 @@ class TextEditor(QMainWindow):
         self.textEdit.clear()
         self.data = ""
         self.tokens = []
+        self.ast = None
+        self.quads = []  # 清空四元式
         self.tableWidget.clear()
         self.tableWidget.setRowCount(0)
         self.clear_error()
@@ -689,16 +814,16 @@ class TextEditor(QMainWindow):
         try:
             # 生成四元式
             zhongjian = Zhongjian()
-            quads = zhongjian.generate(self.ast)
+            self.quads = zhongjian.generate(self.ast)
 
             # 清空表格并设置显示四元式
             self.tableWidget.clear()
-            self.tableWidget.setRowCount(len(quads))
+            self.tableWidget.setRowCount(len(self.quads))
             self.tableWidget.setColumnCount(5)
             self.tableWidget.setHorizontalHeaderLabels(['索引', '操作符', '参数1', '参数2', '结果'])
 
             # 填充四元式到表格
-            for i, quad in enumerate(quads):
+            for i, quad in enumerate(self.quads):
                 self.tableWidget.setItem(i, 0, QTableWidgetItem(str(i)))
                 self.tableWidget.setItem(i, 1, QTableWidgetItem(str(quad[0])))  # 操作符
                 self.tableWidget.setItem(i, 2, QTableWidgetItem(str(quad[1]) if quad[1] is not None else ''))  # 参数1
@@ -710,7 +835,13 @@ class TextEditor(QMainWindow):
 
         except Exception as e:
             self.show_error(f'中间代码生成失败: {str(e)}')
+    def mubiao(self):
+        self.clear_error()
+        if not hasattr(self, 'tokens') or not self.tokens:
+            self.show_error('请先进行词法分析！')
+            return
 
+        return
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     editor = TextEditor()

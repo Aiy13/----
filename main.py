@@ -11,7 +11,7 @@ from graphviz import Digraph
 import os
 from yuyi import Yuyi
 from zhongjian import Zhongjian
-from mubiao import Mubiao  # 新增导入目标代码生成模块
+from Mubiao import Mubiao  # 新增导入目标代码生成模块
 
 
 class SyntaxTreeDialog(QDialog):
@@ -526,72 +526,102 @@ class TextEditor(QMainWindow):
         self.errorOutput.clear()
 
     def generate_ast_graph(self, ast):
-        try:
-            from graphviz import Digraph
-        except ImportError:
-            self.show_error(
-                '请安装 graphviz 库：pip install graphviz\n并确保安装 Graphviz 软件：https://graphviz.org/download/')
-            return None
-
-        dot = Digraph(
-            comment='Syntax Tree',
-            format='png',
-            graph_attr={'rankdir': 'TB', 'bgcolor': '#252525'},
-            node_attr={'shape': 'box', 'style': 'filled', 'fillcolor': '#ADD8E6', 'color': '#000000',
-                       'fontcolor': '#000000', 'fontname': 'Consolas', 'fontsize': '10'},
-            edge_attr={'color': '#555555', 'arrowsize': '1.0'}
-        )
-
-        def add_node_and_edges(node, parent=None, description=''):
-            if not node or not isinstance(node, dict):
+        """生成语法树图形"""
+        dot = Digraph(comment='AST')
+        dot.attr(rankdir='TB')
+        
+        def add_node_and_edges(node, parent_id=None, edge_label=None):
+            if node is None:
                 return
-
+            
+            # 生成节点ID
             node_id = str(id(node))
-            node_type = node.get('type', '')
-            label = node_type
-
-            if node_type == 'binary_expression':
-                label = node.get('operator', '')
-            elif node_type == 'number':
-                label = node.get('value', '')
-            elif node_type == 'identifier':
-                label = node.get('name', '')
-            elif node_type == 'assignment_expression':
-                label = '='
-            elif node_type == 'variable_declaration':
-                label = f"{node.get('var_type', '')} {node.get('name', '')}"
-            elif node_type in ['if_statement', 'while_statement', 'program']:
-                label = node_type
-
+            
+            # 设置节点标签
+            if node['type'] == 'program':
+                label = 'program'
+            elif node['type'] == 'function_declaration':
+                # 区分函数声明和函数定义
+                if node.get('is_declaration', False):
+                    label = f"function_declaration\n{node['return_type']} {node['name']}"
+                else:
+                    label = f"function_definition\n{node['return_type']} {node['name']}"
+            elif node['type'] == 'variable_declaration':
+                label = f"variable_declaration\n{node['var_type']} {node['name']}"
+            elif node['type'] == 'binary_expression':
+                label = f"binary_expression\n{node['operator']}"
+            elif node['type'] == 'unary_expression':
+                label = f"unary_expression\n{node['operator']}"
+            elif node['type'] == 'identifier':
+                label = f"identifier\n{node['name']}"
+            elif node['type'] == 'number':
+                label = f"number\n{node['value']}"
+            elif node['type'] == 'if_statement':
+                label = 'if_statement'
+            elif node['type'] == 'while_statement':
+                label = 'while_statement'
+            elif node['type'] == 'printf_statement':
+                label = 'printf_statement'
+            elif node['type'] == 'return_statement':
+                label = 'return_statement'
+            elif node['type'] == 'function_call':
+                label = f"function_call\n{node['name']}"
+            else:
+                label = node['type']
+            
+            # 添加节点
             dot.node(node_id, label)
-            if parent is not None:
-                dot.edge(parent, node_id, label=description if description else '')
-
-            if node_type == 'binary_expression':
-                add_node_and_edges(node.get('left'), node_id, 'left')
-                add_node_and_edges(node.get('right'), node_id, 'right')
-            elif node_type == 'assignment_expression':
-                add_node_and_edges(node.get('left'), node_id, 'left')
-                add_node_and_edges(node.get('right'), node_id, 'right')
-            elif node_type == 'variable_declaration':
-                add_node_and_edges(node.get('initializer'), node_id, 'initializer')
-            elif node_type == 'if_statement':
-                add_node_and_edges(node.get('condition'), node_id, 'condition')
+            
+            # 如果有父节点，添加边
+            if parent_id is not None:
+                dot.edge(parent_id, node_id, edge_label)
+            
+            # 处理子节点
+            if node['type'] == 'program':
                 for stmt in node.get('body', []):
                     add_node_and_edges(stmt, node_id, 'body')
+            elif node['type'] == 'function_declaration':
+                # 处理参数
+                for param in node.get('params', []):
+                    param_label = f"param\n{param['type']} {param['name']}"
+                    param_id = str(id(param))
+                    dot.node(param_id, param_label)
+                    dot.edge(node_id, param_id, 'param')
+                # 处理函数体（如果不是函数声明）
+                if not node.get('is_declaration', False) and node.get('body'):
+                    for stmt in node['body']:
+                        add_node_and_edges(stmt, node_id, 'body')
+            elif node['type'] == 'binary_expression':
+                add_node_and_edges(node['left'], node_id, 'left')
+                add_node_and_edges(node['right'], node_id, 'right')
+            elif node['type'] == 'unary_expression':
+                add_node_and_edges(node['operand'], node_id, 'operand')
+            elif node['type'] == 'if_statement':
+                add_node_and_edges(node['condition'], node_id, 'condition')
+                if node.get('body'):
+                    for stmt in node['body']:
+                        add_node_and_edges(stmt, node_id, 'body')
                 if node.get('else'):
                     for stmt in node['else']:
                         add_node_and_edges(stmt, node_id, 'else')
-            elif node_type == 'while_statement':
-                add_node_and_edges(node.get('condition'), node_id, 'condition')
-                for stmt in node.get('body', []):
-                    add_node_and_edges(stmt, node_id, 'body')
-            elif node_type == 'program':
-                for stmt in node.get('body', []):
-                    add_node_and_edges(stmt, node_id, 'body')
-
+            elif node['type'] == 'while_statement':
+                add_node_and_edges(node['condition'], node_id, 'condition')
+                if node.get('body'):
+                    for stmt in node['body']:
+                        add_node_and_edges(stmt, node_id, 'body')
+            elif node['type'] == 'printf_statement':
+                for arg in node.get('arguments', []):
+                    add_node_and_edges(arg, node_id, 'arg')
+            elif node['type'] == 'function_call':
+                for arg in node.get('arguments', []):
+                    add_node_and_edges(arg, node_id, 'arg')
+            elif node['type'] == 'return_statement':
+                if node.get('value'):
+                    add_node_and_edges(node['value'], node_id, 'value')
+        
+        # 开始生成图形
         add_node_and_edges(ast)
-
+        
         output_dir = os.path.expanduser("~/syntax_tree_output")
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
@@ -754,9 +784,7 @@ class TextEditor(QMainWindow):
         yuyi = Yuyi()
         result = yuyi.analyze(ast)
 
-        if result['type'] == 'error':
-            self.show_error('\n'.join(result['errors']))
-        else:
+        if result:
             # 显示符号表和函数表
             self.tableWidget.clear()
             self.tableWidget.setRowCount(0)
@@ -770,8 +798,9 @@ class TextEditor(QMainWindow):
                 self.tableWidget.setItem(row, 0, QTableWidgetItem('变量'))
                 self.tableWidget.setItem(row, 1, QTableWidgetItem(var_info['name']))
                 self.tableWidget.setItem(row, 2, QTableWidgetItem(var_info['type']))
-                self.tableWidget.setItem(row, 3, QTableWidgetItem(var_info['scope']))
-                self.tableWidget.setItem(row, 4, QTableWidgetItem(str(var_info['value'])))
+                self.tableWidget.setItem(row, 3, QTableWidgetItem(str(var_info['scope'])))
+                value_str = str(var_info['value']) if var_info['value'] is not None else ''
+                self.tableWidget.setItem(row, 4, QTableWidgetItem(value_str))
 
             # 添加函数（函数表）
             for func_name, func_info in result['function_table'].items():
@@ -780,8 +809,13 @@ class TextEditor(QMainWindow):
                 self.tableWidget.setItem(row, 0, QTableWidgetItem('函数'))
                 self.tableWidget.setItem(row, 1, QTableWidgetItem(func_name))
                 self.tableWidget.setItem(row, 2, QTableWidgetItem(func_info['return_type']))
-                self.tableWidget.setItem(row, 3, QTableWidgetItem('global'))  # Functions assumed global
-                params_str = ', '.join(f"{param[0]}:{param[1]}" for param in func_info['params'])
+                self.tableWidget.setItem(row, 3, QTableWidgetItem('global'))
+                
+                # 格式化参数信息
+                params = []
+                for name, type in zip(func_info['param_names'], func_info['param_types']):
+                    params.append(f"{name}:{type}")
+                params_str = ', '.join(params)
                 self.tableWidget.setItem(row, 4, QTableWidgetItem(params_str))
 
             self.tableWidget.resizeColumnsToContents()
@@ -814,34 +848,123 @@ class TextEditor(QMainWindow):
         try:
             # 生成四元式
             zhongjian = Zhongjian()
+            print("开始生成中间代码...")  # 调试信息
+            print("AST结构:", self.ast)  # 调试信息
+            
             self.quads = zhongjian.generate(self.ast)
+            print("生成的四元式:", self.quads)  # 调试信息
+            
+            # 检查四元式是否生成成功
+            if not self.quads:
+                self.show_error('中间代码生成失败：未生成任何四元式')
+                return
+            
+            # 创建水平布局来放置两个表格
+            h_layout = QHBoxLayout()
+            
+            # 左侧表格显示优化前的代码
+            left_table = QTableWidget()
+            left_table.setRowCount(len(self.quads))
+            left_table.setColumnCount(5)
+            left_table.setHorizontalHeaderLabels(['索引', '操作符', '参数1', '参数2', '结果'])
 
-            # 清空表格并设置显示四元式
-            self.tableWidget.clear()
-            self.tableWidget.setRowCount(len(self.quads))
-            self.tableWidget.setColumnCount(5)
-            self.tableWidget.setHorizontalHeaderLabels(['索引', '操作符', '参数1', '参数2', '结果'])
-
-            # 填充四元式到表格
+            # 填充优化前的四元式到左侧表格
             for i, quad in enumerate(self.quads):
-                self.tableWidget.setItem(i, 0, QTableWidgetItem(str(i)))
-                self.tableWidget.setItem(i, 1, QTableWidgetItem(str(quad[0])))  # 操作符
-                self.tableWidget.setItem(i, 2, QTableWidgetItem(str(quad[1]) if quad[1] is not None else ''))  # 参数1
-                self.tableWidget.setItem(i, 3, QTableWidgetItem(str(quad[2]) if quad[2] is not None else ''))  # 参数2
-                self.tableWidget.setItem(i, 4, QTableWidgetItem(str(quad[3]) if quad[3] is not None else ''))  # 结果
+                try:
+                    left_table.setItem(i, 0, QTableWidgetItem(str(i)))
+                    left_table.setItem(i, 1, QTableWidgetItem(str(quad[0])))
+                    left_table.setItem(i, 2, QTableWidgetItem(str(quad[1]) if quad[1] is not None else ''))
+                    left_table.setItem(i, 3, QTableWidgetItem(str(quad[2]) if quad[2] is not None else ''))
+                    left_table.setItem(i, 4, QTableWidgetItem(str(quad[3]) if quad[3] is not None else ''))
+                except Exception as e:
+                    print(f"处理四元式 {i} 时出错:", e)  # 调试信息
+                    print("四元式内容:", quad)  # 调试信息
+                    raise
 
-            self.tableWidget.resizeColumnsToContents()
-            self.show_error('中间代码生成成功！')
+            left_table.resizeColumnsToContents()
+            h_layout.addWidget(left_table)
+
+            # 进行代码优化
+            from youhua import youhua
+            optimizer = youhua(self.quads)
+            optimized_quads = optimizer.optimize()
+            print("优化后的四元式:", optimized_quads)  # 调试信息
+
+            # 检查优化后的四元式
+            if not optimized_quads:
+                self.show_error('代码优化失败：未生成任何优化后的四元式')
+                return
+
+            # 右侧表格显示优化后的代码
+            right_table = QTableWidget()
+            right_table.setRowCount(len(optimized_quads))
+            right_table.setColumnCount(5)
+            right_table.setHorizontalHeaderLabels(['索引', '操作符', '参数1', '参数2', '结果'])
+
+            # 填充优化后的四元式到右侧表格
+            for i, quad in enumerate(optimized_quads):
+                try:
+                    right_table.setItem(i, 0, QTableWidgetItem(str(i)))
+                    right_table.setItem(i, 1, QTableWidgetItem(str(quad[0])))
+                    right_table.setItem(i, 2, QTableWidgetItem(str(quad[1]) if quad[1] is not None else ''))
+                    right_table.setItem(i, 3, QTableWidgetItem(str(quad[2]) if quad[2] is not None else ''))
+                    right_table.setItem(i, 4, QTableWidgetItem(str(quad[3]) if quad[3] is not None else ''))
+                except Exception as e:
+                    print(f"处理优化后的四元式 {i} 时出错:", e)  # 调试信息
+                    print("四元式内容:", quad)  # 调试信息
+                    raise
+
+            right_table.resizeColumnsToContents()
+            h_layout.addWidget(right_table)
+
+            # 清空主布局并添加水平布局
+            for i in reversed(range(self.layout.count())): 
+                widget = self.layout.itemAt(i).widget()
+                if widget:
+                    widget.setParent(None)
+            self.layout.addLayout(h_layout)
+
+            # 更新主窗口的四元式为优化后的结果
+            self.quads = optimized_quads
 
         except Exception as e:
-            self.show_error(f'中间代码生成失败: {str(e)}')
-    def mubiao(self):
+            import traceback
+            error_msg = f'中间代码生成失败: {str(e)}\n{traceback.format_exc()}'
+            print(error_msg)  # 打印完整错误信息到控制台
+            self.show_error(error_msg)
+
+    def mubiao_fenxi(self):
+        """生成目标代码并显示"""
         self.clear_error()
+
+        # 检查是否已进行词法分析
         if not hasattr(self, 'tokens') or not self.tokens:
             self.show_error('请先进行词法分析！')
             return
 
-        return
+        # 检查是否已进行语法分析
+        if not hasattr(self, 'ast') or not self.ast:
+            self.show_error('请先进行语法分析！')
+            return
+
+        # 检查是否已生成中间代码
+        if not hasattr(self, 'quads') or not self.quads:
+            self.show_error('请先生成中间代码！')
+            return
+
+        try:
+            # 创建Mubiao实例并生成汇编代码
+            mubiao = Mubiao(self.quads)
+            asm_code = mubiao.generate()
+
+            # 显示汇编代码
+            dialog = AssemblyCodeDialog(self)
+            dialog.show_code(asm_code)
+            dialog.exec_()
+
+        except Exception as e:
+            self.show_error(f'目标代码生成失败: {str(e)}')
+
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     editor = TextEditor()

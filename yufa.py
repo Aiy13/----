@@ -4,7 +4,7 @@ import json
 
 class Yufa:
     def __init__(self):
-        self.keywords = {'if', 'else', 'while', 'int', 'float'}
+        self.keywords = {'if', 'else', 'while', 'int', 'float', 'printf', 'return'}
         self.tokens = []
         self.current = 0
         self.errors = []
@@ -18,50 +18,162 @@ class Yufa:
         self.current = 0
         self.errors = []
         try:
-            if not self.check_main():
+            functions = []
+            
+            # 解析所有函数定义
+            while self.current < len(self.tokens):
+                func = self.function_declaration()
+                if func:
+                    functions.append(func)
+                else:
+                    break
+            
+            if not functions:
+                self.errors.append("没有找到任何函数定义")
                 return {'type': 'error', 'errors': self.errors}
-            statements = []
-            start_token = self.current_token()
-            while self.current < len(self.tokens) and self.current_token() and self.current_token()[2] != '}':
-                stmt = self.statement()
-                if stmt:
-                    statements.append(stmt)
-            if not self.current_token() or self.current_token()[2] != '}':
-                self.errors.append("main函数缺少右大括号")
-            else:
-                self.current += 1
+            
+            # 检查是否有main函数
+            main_func = None
+            for func in functions:
+                if func['name'] == 'main':
+                    main_func = func
+                    break
+            
+            if not main_func:
+                self.errors.append("缺少main函数")
+            
             return {
                 'type': 'program',
-                'body': statements,
-                'line': start_token[3] if start_token else 0,  # Line number of program start
+                'body': functions,
+                'line': functions[0]['line'] if functions else 0,
                 'errors': self.errors
             }
         except Exception as e:
             self.errors.append(f"语法错误：{str(e)}")
             return {'type': 'error', 'errors': self.errors}
 
-    def check_main(self):
+    def function_declaration(self):
+        """解析函数声明"""
+        # 解析返回类型
+        return_type = 'int'  # 默认返回类型
         token = self.current_token()
-        if not token or token[2] != 'main':
-            self.errors.append("缺少main函数")
-            return False
+        if not token:
+            return None
+            
+        if token[2] in ['int', 'float', 'void']:
+            return_type = token[2]
+            self.current += 1
+            token = self.current_token()
+        
+        # 解析函数名
+        if not token or token[1] != '标识符':
+            if token:
+                self.errors.append(f"第{token[3]}行：期望函数名")
+            return None
+        
+        func_name = token[2]
+        func_line = token[3]
         self.current += 1
+        
+        # 解析参数列表
         token = self.current_token()
         if not token or token[2] != '(':
-            self.errors.append("main函数缺少左括号")
-            return False
+            self.errors.append(f"第{func_line}行：函数{func_name}缺少左括号")
+            return None
         self.current += 1
+        
+        params = []
+        while True:
+            token = self.current_token()
+            if not token:
+                self.errors.append(f"第{func_line}行：函数{func_name}参数列表不完整")
+                return None
+            
+            if token[2] == ')':
+                self.current += 1
+                break
+            
+            # 解析参数类型
+            if token[2] not in ['int', 'float']:
+                self.errors.append(f"第{token[3]}行：无效的参数类型")
+                return None
+            
+            param_type = token[2]
+            self.current += 1
+            
+            # 解析参数名
+            token = self.current_token()
+            if not token or token[1] != '标识符':
+                self.errors.append(f"第{func_line}行：参数缺少标识符")
+                return None
+            
+            param_name = token[2]
+            self.current += 1
+            
+            params.append({
+                'type': param_type,
+                'name': param_name
+            })
+            
+            # 检查是否有更多参数
+            token = self.current_token()
+            if token and token[2] == ',':
+                self.current += 1
+                continue
+            elif token and token[2] == ')':
+                continue
+            else:
+                self.errors.append(f"第{func_line}行：参数之间缺少逗号")
+                return None
+        
+        # 检查是否有函数体
         token = self.current_token()
-        if not token or token[2] != ')':
-            self.errors.append("main函数缺少右括号")
-            return False
+        if not token:
+            self.errors.append(f"第{func_line}行：函数声明不完整")
+            return None
+        
+        # 如果是分号，说明是函数声明
+        if token[2] == ';':
+            self.current += 1
+            return {
+                'type': 'function_declaration',
+                'return_type': return_type,
+                'name': func_name,
+                'params': params,
+                'body': None,  # 函数声明没有函数体
+                'line': func_line,
+                'is_declaration': True  # 标记这是一个函数声明
+            }
+        
+        # 如果是左大括号，说明是函数定义
+        if token[2] != '{':
+            self.errors.append(f"第{func_line}行：函数定义缺少左大括号")
+            return None
+        
         self.current += 1
+        
+        # 解析函数体
+        statements = []
+        while self.current < len(self.tokens) and self.current_token() and self.current_token()[2] != '}':
+            stmt = self.statement()
+            if stmt:
+                statements.append(stmt)
+        
         token = self.current_token()
-        if not token or token[2] != '{':
-            self.errors.append("main函数缺少左大括号")
-            return False
-        self.current += 1
-        return True
+        if not token or token[2] != '}':
+            self.errors.append(f"第{func_line}行：函数定义缺少右大括号")
+        else:
+            self.current += 1
+        
+        return {
+            'type': 'function_declaration',
+            'return_type': return_type,
+            'name': func_name,
+            'params': params,
+            'body': statements,
+            'line': func_line,
+            'is_declaration': False  # 标记这是一个函数定义
+        }
 
     def statement(self):
         token = self.current_token()
@@ -76,8 +188,39 @@ class Yufa:
             return self.if_statement()
         elif token[2] == 'while':
             return self.while_statement()
+        elif token[2] == 'printf':
+            return self.printf_statement()
+        elif token[2] == 'return':
+            return self.return_statement()
         else:
             return self.expression_statement()
+
+    def return_statement(self):
+        return_token = self.current_token()
+        if not return_token:
+            return None
+        self.current += 1
+        
+        result = {
+            'type': 'return_statement',
+            'line': return_token[3],
+            'value': None
+        }
+        
+        # 检查是否有返回值
+        token = self.current_token()
+        if token and token[2] != ';':
+            value = self.expression()
+            if value:
+                result['value'] = value
+        
+        token = self.current_token()
+        if not token or token[2] != ';':
+            self.errors.append(f"第{return_token[3]}行：return语句缺少分号")
+            return None
+        self.current += 1
+        
+        return result
 
     def variable_declaration(self):
         type_token = self.current_token()
@@ -122,11 +265,8 @@ class Yufa:
         if expr is None:
             return None
         token = self.current_token()
-        if not token or token[2] == ')':
-            self.errors.append(f"第{start_token[3]}行：表达式缺少左括号")
         if not token or token[2] != ';':
             self.errors.append(f"第{start_token[3]}行：表达式缺少分号")
-            self.current -= 1
             self.skip_to_nextline()
             return None
         self.current += 1
@@ -448,11 +588,51 @@ class Yufa:
                 'line': token[3]
             }
         elif token[1] == '标识符':
-            return {
-                'type': 'identifier',
-                'name': token[2],
-                'line': token[3]
-            }
+            # 检查是否是函数调用
+            if self.current_token() and self.current_token()[2] == '(':
+                self.current += 1  # 跳过 '('
+                func_name = token[2]
+                func_line = token[3]
+                
+                arguments = []
+                while True:
+                    current_token = self.current_token()
+                    if not current_token:
+                        self.errors.append(f"第{func_line}行：函数调用{func_name}参数列表不完整")
+                        return None
+                    
+                    if current_token[2] == ')':
+                        self.current += 1
+                        break
+                    
+                    arg = self.expression()
+                    if not arg:
+                        self.errors.append(f"第{func_line}行：函数调用{func_name}参数无效")
+                        return None
+                    arguments.append(arg)
+                    
+                    current_token = self.current_token()
+                    if current_token and current_token[2] == ',':
+                        self.current += 1
+                        continue
+                    elif current_token and current_token[2] == ')':
+                        continue
+                    else:
+                        self.errors.append(f"第{func_line}行：函数调用{func_name}参数之间缺少逗号")
+                        return None
+                
+                return {
+                    'type': 'function_call',
+                    'name': func_name,
+                    'arguments': arguments,
+                    'line': func_line
+                }
+            else:
+                return {
+                    'type': 'identifier',
+                    'name': token[2],
+                    'line': token[3]
+                }
         elif token[2] == '(':
             expr = self.expression()
             if not expr:
@@ -464,7 +644,7 @@ class Yufa:
                 self.errors.append(f"第{token[3] if token else token[3]}行：缺少右括号")
                 return None
             self.current += 1
-            expr['line'] = token[3]  # Use opening parenthesis line
+            expr['line'] = token[3]
             return expr
         elif token[1] == '符号' and token[2] not in self.valid_operators:
             self.errors.append(f"第{token[3]}行：无效运算符 {token[2]}")
@@ -483,20 +663,80 @@ class Yufa:
         while self.current < len(self.tokens) and self.current_token() and self.current_token()[3] == line:
             self.current += 1
 
+    def printf_statement(self):
+        printf_token = self.current_token()
+        if not printf_token:
+            return None
+        self.current += 1
+        result = {
+            'type': 'printf_statement',
+            'line': printf_token[3],
+            'arguments': []
+        }
+        
+        token = self.current_token()
+        if not token or token[2] != '(':
+            self.errors.append(f"第{printf_token[3]}行：printf后缺少左括号")
+            return None
+        self.current += 1
+        
+        while True:
+            token = self.current_token()
+            if not token:
+                self.errors.append(f"第{printf_token[3]}行：printf语句不完整")
+                return None
+                
+            if token[2] == ')':
+                self.current += 1
+                break
+                
+            arg = self.expression()
+            if not arg:
+                self.errors.append(f"第{printf_token[3]}行：printf参数无效")
+                return None
+            result['arguments'].append(arg)
+            
+            token = self.current_token()
+            if token and token[2] == ',':
+                self.current += 1
+                continue
+            elif token and token[2] == ')':
+                continue
+            else:
+                self.errors.append(f"第{printf_token[3]}行：printf参数之间缺少逗号")
+                return None
+        
+        token = self.current_token()
+        if not token or token[2] != ';':
+            self.errors.append(f"第{printf_token[3]}行：printf语句缺少分号")
+            return None
+        self.current += 1
+        
+        return result
+
 
 if __name__ == '__main__':
     cifa = Cifa()
     test_code = """
-        main()
-    {
-        if(a + b)
-        {
+int add(int a, int b);
+int main() 
+{ 
+    int a = 1; 
+    int b = 2; 
+    int z = add(a, b);
+    printf(z);
+}
 
-    }
+int add(int a, int b)
+{
+    return a + b;
+}
     """
+    
     tokens = cifa.cifafenxi(test_code)
     yufa = Yufa()
     result = yufa.parse(tokens)
+    
     if result['type'] == 'error':
         print("语法错误：")
         for error in result['errors']:
